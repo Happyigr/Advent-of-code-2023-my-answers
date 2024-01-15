@@ -1,2 +1,4 @@
 # ignoring .txt files
 *.txt
+# ignoring executables
+*.o
