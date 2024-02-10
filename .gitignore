@@ -1,3 +1,5 @@
+# ignoring target folder
+target/
 # ignoring .txt files
 *.txt
 # ignoring executables
