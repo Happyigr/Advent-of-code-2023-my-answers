@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use std::fs;
+use std::{collections::HashMap, fs};
 
 fn setup() -> Vec<SpringLine> {
     SpringLine::new_vec_from_file(String::from("example.txt"))
@@ -39,21 +39,28 @@ mod tests {
     #[test]
     #[ignore]
     fn correct_calculating2() {
-        let example_springs = setup();
-        let ans_vec: Vec<u32> = vec![1, 16384, 1, 16, 2500, 506250];
-        let mut calculated_vec: Vec<u32> = vec![];
+        let mut example_springs = setup();
+        let ans_vec: Vec<usize> = vec![1, 16384, 1, 16, 2500, 506250];
+        let mut calculated_vec: Vec<usize> = vec![];
+        let mut cache = Cache {
+            cache: HashMap::new(),
+        };
+
+        for spring_line in example_springs.iter_mut() {
+            spring_line.replicate(5);
+        }
 
         for spring_line in example_springs.iter() {
-            calculated_vec.push(spring_line.calculate2());
+            calculated_vec.push(cache.calculate_dyn(&spring_line.springs, &spring_line.nums, None));
         }
 
         assert_eq!(ans_vec, calculated_vec);
     }
 }
 
-pub fn check_correct(line: &String, nums: &Vec<u32>) -> bool {
-    let mut hashes: Vec<u32> = vec![];
-    let mut founded_hashes: u32 = 0;
+pub fn check_correct(line: &str, nums: &Vec<usize>) -> bool {
+    let mut hashes: Vec<usize> = vec![];
+    let mut founded_hashes: usize = 0;
 
     for ch in line.chars() {
         match ch {
@@ -74,39 +81,112 @@ pub fn check_correct(line: &String, nums: &Vec<u32>) -> bool {
 
     hashes == *nums
 }
+
+pub struct Cache {
+    pub cache: HashMap<(String, Vec<usize>, Option<usize>), usize>,
+}
+
+impl Cache {
+    // is_group has 3 states:
+    // None - the group is not started
+    // Some(_) - the group is started
+    // Some(0) - the group is ended
+    pub fn calculate_dyn(
+        &mut self,
+        springs: &str,
+        nums: &[usize],
+        group_length: Option<usize>,
+    ) -> usize {
+        // if there are no groups more and the group is not started and there are no hashes more
+        // return 1
+        if nums.len() == 0 && group_length.is_none() {
+            let hashes_left = springs.find('#').is_some();
+
+            return if hashes_left { 0 } else { 1 };
+        }
+
+        // if there are no symbols more and the group is started or ended and there are no
+        // groups more return 1
+        if springs.is_empty() {
+            match group_length {
+                Some(0) | None => {
+                    if nums.is_empty() {
+                        return 1;
+                    } else {
+                        return 0;
+                    }
+                }
+                Some(_) => return 0,
+            }
+        }
+
+        // the behavior of the function in depences of the current sym and group_length
+        match (&springs[0..1], group_length) {
+            (".", None) => return self.cached_calculate_dyn(&springs[1..], &nums, None),
+            (".", Some(0)) => return self.cached_calculate_dyn(&springs[1..], &nums, None),
+            (".", Some(_)) => return 0,
+
+            ("#", None) => return self.cached_calculate_dyn(springs, &nums[1..], Some(nums[0])),
+            ("#", Some(0)) => return 0,
+            ("#", Some(v)) => return self.cached_calculate_dyn(&springs[1..], &nums, Some(v - 1)),
+
+            ("?", None) => {
+                return self.cached_calculate_dyn(springs, &nums[1..], Some(nums[0]))
+                    + self.cached_calculate_dyn(&springs[1..], nums, None)
+            }
+            ("?", Some(0)) => return self.cached_calculate_dyn(&springs[1..], &nums, None),
+            ("?", Some(v)) => return self.cached_calculate_dyn(&springs[1..], &nums, Some(v - 1)),
+
+            (_, _) => unimplemented!("This not implemented yet"),
+        }
+    }
+
+    fn cached_calculate_dyn(
+        &mut self,
+        springs: &str,
+        nums: &[usize],
+        group_length: Option<usize>,
+    ) -> usize {
+        if self
+            .cache
+            .contains_key(&(springs.to_string(), nums.to_vec(), group_length))
+        {
+            return *self
+                .cache
+                .get(&(springs.to_string(), nums.to_vec(), group_length))
+                .unwrap();
+        }
+
+        let result = self.calculate_dyn(springs, nums, group_length);
+        self.cache
+            .insert((springs.to_string(), nums.to_vec(), group_length), result);
+
+        return result;
+    }
+}
+
 #[derive(Debug)]
 pub struct SpringLine {
     pub springs: String,
-    pub nums: Vec<u32>,
+    pub nums: Vec<usize>,
 }
 
 impl SpringLine {
-    pub fn calculate2(&self) -> u32 {
-        let mut ans: u32 = 0;
+    pub fn replicate(&mut self, num: usize) {
+        let s = &self.springs.clone();
+        let nums = &self.nums.clone();
 
-        let first_combos = self.calculate1();
-        let added_springs;
-
-        if self.springs.chars().next() == Some('?') && self.springs.chars().last() == Some('?') {
-            added_springs = SpringLine {
-                springs: format!("?{}?", self.springs),
-                nums: self.nums.clone(),
-            };
-        } else {
-            added_springs = SpringLine {
-                springs: if self.springs.chars().last() == Some('#') {
-                    format!(".{}", self.springs)
-                } else {
-                    format!("?{}", self.springs)
-                },
-                nums: self.nums.clone(),
-            };
+        println!("{:?}", self.nums);
+        for _i in 0..(num - 1) {
+            self.springs.push('?');
+            for n in nums {
+                self.nums.push(*n);
+            }
+            self.springs.push_str(&s);
         }
-        println!("{:?}", added_springs);
-        let added_combos = added_springs.calculate1();
-        ans += first_combos * added_combos.pow(4);
 
-        ans
+        print!(" is than {:?}", self.nums);
+        println!("{s} is than {}", self.springs);
     }
 
     pub fn calculate1(&self) -> u32 {
